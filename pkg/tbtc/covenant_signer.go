@@ -759,18 +759,60 @@ func (cse *covenantSignerEngine) buildQcV1SignerHandoff(
 	}, nil
 }
 
+// covenantDestinationOutputScript returns the destination output scriptPubKey
+// for the request's covenant action. keep-core pays the provided script directly:
+// the migration deposit script, the redeem payout script, or the next-covenant
+// script for a renew. Validation has already recompute-and-compared each of these
+// against the action's destination commitment, so the built output is exactly
+// what the depositor's artifact approval authorized.
+func covenantDestinationOutputScript(
+	request covenantsigner.RouteSubmitRequest,
+) (bitcoin.Script, error) {
+	switch request.ResolvedAction() {
+	case covenantsigner.CovenantActionMigration:
+		if request.MigrationDestination == nil {
+			return nil, fmt.Errorf("migration destination is required")
+		}
+		script, err := decodePrefixedHex(request.MigrationDestination.DepositScript)
+		if err != nil {
+			return nil, fmt.Errorf("migration destination deposit script is invalid")
+		}
+		return script, nil
+	case covenantsigner.CovenantActionRedeem:
+		if request.RedeemDestination == nil {
+			return nil, fmt.Errorf("redeem destination is required")
+		}
+		script, err := decodePrefixedHex(request.RedeemDestination.OutputScript)
+		if err != nil {
+			return nil, fmt.Errorf("redeem destination output script is invalid")
+		}
+		return script, nil
+	case covenantsigner.CovenantActionRenew:
+		if request.RenewDestination == nil {
+			return nil, fmt.Errorf("renew destination is required")
+		}
+		script, err := decodePrefixedHex(request.RenewDestination.NextCovenantScript)
+		if err != nil {
+			return nil, fmt.Errorf("renew destination next covenant script is invalid")
+		}
+		return script, nil
+	default:
+		return nil, fmt.Errorf("unsupported covenant action %q", request.ResolvedAction())
+	}
+}
+
 func (cse *covenantSignerEngine) buildCovenantTransactionBuilder(
 	request covenantsigner.RouteSubmitRequest,
 	activeUtxo *bitcoin.UnspentTransactionOutput,
 	witnessScript bitcoin.Script,
 ) (*bitcoin.TransactionBuilder, error) {
-	destinationScript, err := decodePrefixedHex(request.MigrationDestination.DepositScript)
+	destinationScript, err := covenantDestinationOutputScript(request)
 	if err != nil {
-		return nil, fmt.Errorf("migration destination deposit script is invalid")
+		return nil, err
 	}
 	destinationValue, err := toBitcoinOutputValue(
 		request.MigrationTransactionPlan.DestinationValueSats,
-		"migration destination value",
+		"covenant destination value",
 	)
 	if err != nil {
 		return nil, err
