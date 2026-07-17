@@ -23,6 +23,11 @@ import (
 type covenantSignerEngine struct {
 	node                               *node
 	minimumActiveOutpointConfirmations uint
+	// eip712ChainID and eip712Salt define the EIP-712 domain used to recompute
+	// the v2 artifact approval digest during signer approval verification. They
+	// must match the covenant signer service's configured domain.
+	eip712ChainID uint64
+	eip712Salt    [32]byte
 }
 
 // defaultMinActiveOutpointConfirmations is the confirmation threshold applied
@@ -55,7 +60,12 @@ type qcV1SignerHandoff struct {
 // newCovenantSignerEngine creates a covenant signer engine bound to the given
 // node. When minConfirmations is zero (the Go zero-value produced by an unset
 // config field), defaultMinActiveOutpointConfirmations is used.
-func newCovenantSignerEngine(node *node, minConfirmations uint) covenantsigner.Engine {
+func newCovenantSignerEngine(
+	node *node,
+	minConfirmations uint,
+	eip712ChainID uint64,
+	eip712Salt [32]byte,
+) covenantsigner.Engine {
 	if minConfirmations == 0 {
 		minConfirmations = defaultMinActiveOutpointConfirmations
 	}
@@ -63,6 +73,8 @@ func newCovenantSignerEngine(node *node, minConfirmations uint) covenantsigner.E
 	return &covenantSignerEngine{
 		node:                               node,
 		minimumActiveOutpointConfirmations: minConfirmations,
+		eip712ChainID:                      eip712ChainID,
+		eip712Salt:                         eip712Salt,
 	}
 }
 
@@ -82,6 +94,8 @@ func (cse *covenantSignerEngine) VerifySignerApproval(
 
 	expectedApprovalDigest, err := covenantsigner.ComputeArtifactApprovalDigest(
 		request.ArtifactApprovals.Payload,
+		cse.eip712ChainID,
+		cse.eip712Salt,
 	)
 	if err != nil {
 		return covenantsigner.NewInputError(

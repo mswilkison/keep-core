@@ -100,6 +100,8 @@ type startDeps struct {
 		clientInfoRegistry *clientinfo.Registry,
 		perfMetrics *clientinfo.PerformanceMetrics,
 		minActiveOutpointConfirmations uint,
+		eip712ChainID uint64,
+		eip712Salt [32]byte,
 	) (covenantsigner.Engine, error)
 	initializeSigner func(
 		ctx context.Context,
@@ -241,6 +243,13 @@ func startWithDeps(cmd *cobra.Command, deps startDeps) error {
 			btcChain,
 		)
 
+		eip712Salt, err := covenantsigner.ResolveEIP712DomainSalt(
+			clientConfig.CovenantSigner.EIP712Salt,
+		)
+		if err != nil {
+			return fmt.Errorf("error resolving covenant signer EIP-712 salt: [%v]", err)
+		}
+
 		covenantSignerEngine, err := deps.initializeTbtc(
 			ctx,
 			tbtcChain,
@@ -254,6 +263,8 @@ func startWithDeps(cmd *cobra.Command, deps startDeps) error {
 			clientInfoRegistry,
 			perfMetrics, // Pass the existing performance metrics instance to avoid duplicate registrations
 			clientConfig.CovenantSigner.MinActiveOutpointConfirmations,
+			clientConfig.CovenantSigner.EIP712ChainID,
+			eip712Salt,
 		)
 		if err != nil {
 			return fmt.Errorf("error initializing TBTC: [%v]", err)
